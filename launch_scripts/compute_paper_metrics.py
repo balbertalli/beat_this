@@ -1,14 +1,12 @@
-from pytorch_lightning import Trainer, seed_everything
-import torch
-import numpy as np
 import argparse
 from pathlib import Path
 
-import pandas as pd
+import numpy as np
+from pytorch_lightning import Trainer, seed_everything
 
-from beat_this.dataset.dataset import BeatDataModule
-from beat_this.model.pl_module import PLBeatThis
+from beat_this.dataset import BeatDataModule
 from beat_this.inference import load_checkpoint
+from beat_this.model.pl_module import PLBeatThis
 
 # for repeatability
 seed_everything(0, workers=True)
@@ -39,8 +37,6 @@ def main(args):
             k: {d: np.mean(v[dataset == d]) for d in np.unique(dataset)}
             for k, v in metrics.items()
         }
-        # create a dataframe with the dataset_metrics
-        dataset_metrics_df = pd.DataFrame(dataset_metrics)
         # print for dataset
         print("Metrics")
         for k, v in averaged_metrics.items():
@@ -56,14 +52,14 @@ def main(args):
             # computing result variability for the same dataset and different model seeds
             # create datamodule only once, as we assume it is the same for all models
             checkpoint = load_checkpoint(args.models[0])
-            datamodule = datamodule_setup(
-                checkpoint, args.num_workers, args.datasplit
-            )
+            datamodule = datamodule_setup(checkpoint, args.num_workers, args.datasplit)
             # create model and trainer
             all_metrics = []
             for checkpoint_path in args.models:
                 checkpoint = load_checkpoint(checkpoint_path)
-                model, trainer = plmodel_setup(checkpoint, args.eval_trim_beats, args.dbn, args.gpu)
+                model, trainer = plmodel_setup(
+                    checkpoint, args.eval_trim_beats, args.dbn, args.gpu
+                )
 
                 metrics, dataset, preds, piece = compute_predictions(
                     model, trainer, datamodule.predict_dataloader()
@@ -128,8 +124,6 @@ def main(args):
                 }
                 for k, v in all_piece_metrics.items()
             }
-            # create a dataframe with the dataset_metrics
-            dataset_metrics_df = pd.DataFrame(dataset_metrics)
             # print for dataset
             print("Dataset metrics")
             for k, v in dataset_metrics.items():
@@ -152,7 +146,7 @@ def datamodule_setup(checkpoint, num_workers, datasplit):
     datamodule_hparams["predict_datasplit"] = datasplit
     datamodule_hparams["data_dir"] = data_dir
     datamodule = BeatDataModule(**datamodule_hparams)
-    datamodule.setup(stage="test" if datasplit == "test" else "fit")
+    datamodule.setup(stage="predict")
     return datamodule
 
 
@@ -174,9 +168,9 @@ def plmodel_setup(checkpoint, eval_trim_beats, dbn, gpu):
         checkpoint["hyper_parameters"]["eval_trim_beats"] = eval_trim_beats
     if dbn is not None:
         checkpoint["hyper_parameters"]["use_dbn"] = dbn
-    
-    model = PLBeatThis(**checkpoint['hyper_parameters'])
-    model.load_state_dict(checkpoint['state_dict'])
+
+    model = PLBeatThis(**checkpoint["hyper_parameters"])
+    model.load_state_dict(checkpoint["state_dict"])
     # set correct device and accelerator
     if gpu >= 0:
         devices = [gpu]

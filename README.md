@@ -13,7 +13,7 @@ Official implementation of the beat tracker from the ISMIR 2024 paper "[Beat Thi
 
 ## Inference
 
-To predict beats for audio files, you can either use our command line tool or call the beat tracker from Python. Both have the same requirements, unless you go for the online demo.
+To predict beats for audio files, you can either use our command line tool or call the beat tracker from Python. Both have the same requirements unless you go for the online demo.
 
 ### Online demo
 
@@ -45,7 +45,7 @@ To process multiple files, specify multiple input files or directories, and give
 ```bash
 beat_this path/to/*.mp3 path/to/whole_directory/ -o path/to/output_directory
 ```
-The beat tracker will use the first GPU in your system by default, and fall back to CPU if PyTorch does not have CUDA access. With `--gpu=2`, it will use the third GPU, and with `--gpu=-1` it will force the CPU.
+The beat tracker will use the first GPU in your system by default, and fall back to CPU if PyTorch does not have CUDA access. With `--gpu=2`, it will use the third GPU, and with `--gpu=-1` it will force the CPU. For recent GPUs, passing `--float16` may improve speed.
 If you have a lot of files to process, you can distribute the load over multiple processes by running the same command multiple times with `--touch-first`, `--skip-existing` and potentially different options for `--gpu`:
 ```bash
 for gpu in {0..3}; do beat_this input_dir -o output_dir --touch-first --skip-existing --gpu=$gpu & done
@@ -83,7 +83,7 @@ Main models:
 * `final0`, `final1`, `final2`: Our main model, trained on all data except the GTZAN dataset, with three different seeds. This corresponds to "Our system" in Table 2 of the paper. About 78 MB per model.
 * `small0`, `small1`, `small2`: A smaller model, again trained on all data except GTZAN, with three different seeds. This corresponds to "smaller model" in Table 2 of the paper. About 8.1 MB per model.
 * `single_final0`, `single_final1`, `single_final2`: Our main model, trained on the single split described in Section 4.1 of the paper, with three different seeds. This corresponds to "Our system" in Table 3 of the paper. About 78 MB per model.
-* `fold0`, `fold1`, `fold2`, `fold3`, `fold4`, `fold5`, `fold6`, `fold7`: Our main model, trained in the 8-fold cross validation setting with a single seed per fold. This corresponds to "Our" in Table 1 of the paper. About 78 MB per model.
+* `fold0`, `fold1`, `fold2`, `fold3`, `fold4`, `fold5`, `fold6`, `fold7`: Our main model, trained in the 8-fold cross-validation setting with a single seed per fold. This corresponds to "Our" in Table 1 of the paper. About 78 MB per model.
 
 Other models, available mainly for result reproducibility:
 * `hung0`, `hung1`, `hung2`: A model trained on all the data used by the "Modeling Beats and Downbeats with a Time-Frequency Transformer" system by Hung et al. (except GTZAN dataset), with three different seeds. This corresponds to "limited to data of [10]" in Table 2 of the paper.
@@ -101,22 +101,45 @@ Please be aware that the results may be unfairly good if you run inference on an
 
 If you need to run an evaluation on some datasets we used other than GTZAN, consider targeting the validation part of the single split (with `single_final*`), or of the 8-fold cross-validation (with `fold*`).
 
-All the models are provided as PyTorch Lightning checkpoints, stripped of the optimizer state to reduce their size. This is useful for reproducing the paper results, or verifying the hyper parameters (stored in the checkpoint under `hyper_parameters` and `datamodule_hyper_parameters`).
+All the models are provided as PyTorch Lightning checkpoints, stripped of the optimizer state to reduce their size. This is useful for reproducing the paper results or verifying the hyperparameters (stored in the checkpoint under `hyper_parameters` and `datamodule_hyper_parameters`).
 During inference, PyTorch Lighting is not used, and the checkpoints are converted and loaded into vanilla PyTorch modules.
 
 ## Data
 
-*This part will be available soon.*
+### Annotations
+All annotations we used to train our models are available [in a separate GitHub repo](https://github.com/CPJKU/beat_this_annotations). Note that if you want to obtain the exact paper results, you should use [version 1.0](https://github.com/CPJKU/beat_this_annotations/releases/tag/v1.0). Other releases with corrected annotations may be published in the future.
 
+To use the annotations for training or evaluation, you first need to download and extract or clone the annotations repo to `data/annotations`:
+```bash
+mkdir -p data
+git clone https://github.com/CPJKU/beat_this_annotations data/annotations
+# cd data/annotations; git checkout v1.0  # optional
+```
+### Spectrograms
+The spectrograms used for training are released [as a Zenodo dataset](https://zenodo.org/records/13922116). They are distributed as a separate .zip file per dataset, each holding a .npz file with the spectrograms. For evaluation of the test set, download `gtzan.zip`; for training and evaluation of the validation set, download all (except `beat_this_annotations.zip`). Extract all .zip files into `data/audio/spectrograms`, so that you have, for example, `data/audio/spectrograms/gtzan.npz`. As an alternative, the code also supports directories of .npy files such as `data/audio/spectrograms/gtzan/gtzan_blues_00000/track.npy`, which you can obtain by unzipping `gtzan.npz`.
+
+### Recreating spectrograms
+If you have access to the original audio files, or want to add another dataset, create a text file `data/audio_paths.tsv` that has, on each line, the name of a dataset, a tab character, and the path to the audio directory. The corresponding annotations must also be present under `data/annotations`. Install pandas and pedalboard:
+```bash
+pip install pandas pedalboard
+```
+Then run:
+```bash
+python launch_scripts/preprocess_audio.py
+```
+It will create monophonic 22 kHz wave files in `data/audio/mono_tracks`, convert those to spectrograms in `data/audio/spectrograms`, and create spectrogram bundles. Intermediary files are kept and will not be recreated when rerunning the script.
 
 
 ## Reproducing metrics from the paper
 
-*This part won't work until the data release. We still provide the commands for reference.*
-
 ### Requirements
 
-In addition to the [inference requirements](#requirements), computing evaluation metrics requires PyTorch Lightning and `mir_eval`, as well as obtaining and setting up the GTZAN dataset. *This part will be completed soon.*
+In addition to the [inference requirements](#requirements), computing evaluation metrics requires installing PyTorch Lightning, Pandas, and `mir_eval`.
+```bash
+pip install pytorch_lightning pandas mir_eval
+```
+You must also obtain and set up the annotations and spectrogram datasets [as indicated above](#data). Specifically, the GTZAN dataset suffices for commands that include `--data split test`, while all other datasets are required for commands that include `--data split val`.
+
 
 ### Command line
 
@@ -136,7 +159,6 @@ Hung data:
 ```bash
 python launch_scripts/compute_paper_metrics.py --models hung0 hung1 hung2 --datasplit test
 ```
-
 
 With DBN (this requires installing the madmom package):
 ```bash
@@ -193,7 +215,100 @@ python launch_scripts/compute_paper_metrics.py --models single_noshifttolnoweigh
 
 ## Training
 
-*This part will be available soon.*
+### Requirements
+
+The training requirements match the [evaluation requirements](#requirements-1) for the validation set. All 16 datasets and annotations must be [correctly set up](#data).
+
+### Command line
+
+#### Train models listed in Table 2 in the paper.
+
+Main results for our system (final0, final1, final2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed --no-val
+done
+```
+
+Smaller model (small0, small1, small2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed --no-val --transformer-dim=128
+done
+```
+
+Hung data (hung0, hung1, hung2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed --no-val --hung-data
+done
+```
+
+#### Train models with 8-fold cross-validation, corresponding to Table 1 in the paper.
+
+```bash
+for fold in {0..7}; do
+    python launch_scripts/train.py --fold=$fold
+done
+```
+
+#### Train models for the ablation studies, corresponding to Table 3 in the paper.
+
+Our system (single_final0, single_final1, single_final2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed
+done
+```
+
+No sum head (single_nosumhead0, single_nosumhead1, single_nosumhead2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed --no-sum-head
+done
+```
+
+No tempo augmentation (single_notempoaug0, single_notempoaug1, single_notempoaug2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed --no-tempo-augmentation
+done
+```
+
+No mask augmentation (single_nomaskaug0, single_nomaskaug1, single_nomaskaug2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed --no-mask-augmentation
+done
+```
+
+No partial transformers (single_nopartialt0, single_nopartialt1, single_nopartialt2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed --no-partial-transformers
+done
+```
+
+No shift tolerance (single_noshifttol0, single_noshifttol1, single_noshifttol2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed --loss weighted_bce
+done
+```
+
+No pitch augmentation (single_nopitchaug0, single_nopitchaug1, single_nopitchaug2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed --no-pitch-augmentation
+done
+```
+
+No shift tolerance and no weights (single_noshifttolnoweights0, single_noshifttolnoweights1, single_noshifttolnoweights2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed --loss bce
+done
+```
 
 
 ## Reusing the loss

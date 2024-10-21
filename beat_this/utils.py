@@ -1,6 +1,5 @@
-from pathlib import Path
 from itertools import chain
-from zipfile import ZipFile
+from pathlib import Path
 
 import numpy as np
 
@@ -14,51 +13,14 @@ def index_to_framewise(index, length):
 
 def filename_to_augmentation(filename):
     """Convert a filename to an augmentation factor."""
-    stem = Path(filename).stem
-    if len(stem.split("_")) == 2:  # only pitch shift, e.g. track_ps-1
-        return {"pitch": int(stem.split("_")[1].replace("ps", "")), "stretch": 0}
-    elif (
-        len(stem.split("_")) == 3
-    ):  # pitch shift and time stretch, e.g. track_ps-1_ts12
-        return {
-            "pitch": int(stem.split("_")[1].replace("ps", "")),
-            "stretch": int(stem.split("_")[2].replace("ts", "")),
-        }
-    else:
-        raise ValueError(f"Unsupported filename: {filename}")
-
-
-def load_spect(file_path, start=None, stop=None):
-    """
-    Load a spectrogram npy file.
-    Optionally returns an excerpt with positions given in samples.
-    """
-    # load full file as memory map
-    data = np.load(file_path, mmap_mode="r")
-    # pick excerpt
-    if start is not None or stop is not None:
-        data = data[start:stop]
-    return data
-
-
-def load_spect_bundle(file_path):
-    """
-    Load an uncompressed .npz file as memory-mapped arrays.
-    """
-    items = {}
-    data = np.memmap(file_path, mode='r')
-    with ZipFile(file_path) as zf:
-        for name, zinfo in zf.NameToInfo.items():
-            if name.endswith('.npy') and zinfo.compress_type == 0:
-                npy_start = zinfo.header_offset + len(zinfo.FileHeader()) - len(zinfo.extra)
-                npy_end = npy_start + zinfo.file_size
-                zf.fp.seek(npy_start)
-                version = np.lib.format.read_magic(zf.fp)
-                np.lib.format._check_version(version)
-                shape, fortran, dtype = np.lib.format._read_array_header(zf.fp, version)
-                data_start = zf.fp.tell()
-                items[name] = data[data_start:npy_end].view(dtype=dtype).reshape(shape, order='F' if fortran else 'C')
-    return items
+    parts = Path(filename).stem.split("_")
+    augmentations = {}
+    for part in parts[1:]:
+        if part.startswith("ps"):
+            augmentations["shift"] = int(part[2:])
+        elif part.startswith("ts"):
+            augmentations["stretch"] = int(part[2:])
+    return augmentations
 
 
 def save_beat_tsv(beats: np.ndarray, downbeats: np.ndarray, outpath: str) -> None:

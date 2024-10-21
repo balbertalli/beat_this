@@ -5,10 +5,10 @@ Model definitions for the Beat This! beat tracker.
 from collections import OrderedDict
 
 import torch
-from torch import nn
 from einops import rearrange
 from einops.layers.torch import Rearrange
 from rotary_embedding_torch import RotaryEmbedding
+from torch import nn
 
 from beat_this.model import roformer
 from beat_this.utils import replace_state_dict_key
@@ -223,7 +223,7 @@ class PartialRoformer(nn.Module):
         assert dim % dim_head == 0, "dim must be divisible by dim_head"
         assert dim // dim_head == n_head, "n_head must be equal to dim // dim_head"
         self.direction = direction[0].lower()
-        if not self.direction in "ft":
+        if self.direction not in "ft":
             raise ValueError(f"direction must be F or T, got {direction}")
         self.attn = roformer.Attention(
             dim,
@@ -289,14 +289,14 @@ class PartialFTTransformer(nn.Module):
     def forward(self, x):
         b = len(x)
         # frequency directed partial transformer
-        x = rearrange(x, f"b c f t -> (b t) f c")
+        x = rearrange(x, "b c f t -> (b t) f c")
         x = x + self.attnF(x)
         x = x + self.ffF(x)
         # time directed partial transformer
-        x = rearrange(x, f"(b t) f c ->(b f) t c", b=b)
+        x = rearrange(x, "(b t) f c ->(b f) t c", b=b)
         x = x + self.attnT(x)
         x = x + self.ffT(x)
-        x = rearrange(x, f"(b f) t c -> b c f t", b=b)
+        x = rearrange(x, "(b f) t c -> b c f t", b=b)
         return x
 
 

@@ -1,14 +1,12 @@
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import (
-    ModelCheckpoint,
-    LearningRateMonitor,
-)
-from pytorch_lightning import Trainer, seed_everything
-import torch
 import argparse
 from pathlib import Path
 
-from beat_this.dataset.dataset import BeatDataModule
+import torch
+from pytorch_lightning import Trainer, seed_everything
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+from pytorch_lightning.loggers import WandbLogger
+
+from beat_this.dataset import BeatDataModule
 from beat_this.model.pl_module import PLBeatThis
 
 
@@ -67,7 +65,7 @@ def main(args):
         no_val=not args.val,
         fold=args.fold,
     )
-    datamodule.setup()
+    datamodule.setup(stage="fit")
 
     # compute positive weights
     pos_weights = datamodule.get_train_positive_weights(widen_target_mask=3)
